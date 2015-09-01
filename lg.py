@@ -19,12 +19,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 import telnetlib
-import paramiko
+try:
+    import paramiko
+    NOSSH = 0
+except ImportError:
+    NOSSH = 1
 import os
 import socket
 import cgi
 import traceback
 import random
+import json  # For config
+import os.path
+from time import sleep
 from wsgiref.simple_server import make_server
 
 
@@ -49,7 +56,7 @@ class lookingglass(object):
     name    -- Header name for pages (default not set)
     cmds    -- Commands dict of dicts, use %ARG% for substition of IP or hostname
                 argument (default not set)
-    hosts   -- Host dict of tuples with password (or login:password in case of ssh),
+    hosts   -- Host list of tuples with password (or login:password in case of ssh),
                 host address, port number, type (SSH == int(1) or TELNET == int(0))
                 and name for display (default not set)
 
@@ -57,40 +64,43 @@ class lookingglass(object):
                         (default False)
     ipv6_disable    -- Disable ipv6 resolving and check of arguments
                         (default False)
-    resolve         -- Resolve hostnames (default True)
+    resolve         -- Resolve hostnames (default False)
     """
     name = None
     cmds = None
     hosts = None
     ipv4_disable = False
     ipv6_disable = False
-    resolve = True
+    resolve = False
 
     def __init__(self, **kwargs):
         for i in ['name', 'cmds', 'hosts']:
             if not i in self.__dict__ or not self.__dict__[i]:
                 setattr(self, i, kwargs[i])
-            assrt(self.__dict__[i], "%s is not set" % i)
+            assrt(self.__dict__[i], "%s is not set".format(i))
         assrt(isinstance(self.name, (str, unicode)),
-              "%r is not string or unicode" % self.name)
-        assrt(isinstance(self.cmds, dict), "%r is not dict" % self.cmds)
+              "{0!r} is not string or unicode".format(self.name))
+        assrt(isinstance(self.cmds, dict),
+              "{0!r} is not dict".format(self.cmds))
         for d in self.cmds.values():
             for i in d.values():
                 assrt(isinstance(i, (str, unicode)),
-                      "%r is not string or unicode" % i)
-        assrt(isinstance(self.hosts, dict), "%r is not dict" % self.hosts)
-        for d in self.hosts.values():
-            assrt(isinstance(d, tuple), "%r is not tuple" % d)
-            assrt(len(d) == 6, "%r length is not 6" % d)
+                      "{0!r} is not string or unicode".format(i))
+        assrt(isinstance(self.hosts, list),
+              "{0!r} is not list".format(self.hosts))
+        for d in self.hosts:
+            assrt(isinstance(d, tuple), "{0!r} is not tuple".format(d))
+            assrt(len(d) == 6, "{0!r} length is not 6".format(d))
             assrt(isinstance(d[0], (str, unicode)),
-                  "%r is not string or unicode" % d[0])
-            assrt(isinstance(d[1], str), "%r is not string" % d[1])
-            assrt(isinstance(d[2], int), "%r is not integer" % d[2])
-            assrt(d[3] in (TELNET, SSH), "%r is not TELNET or SSH type" % d[3])
+                  "{0!r} is not string or unicode".format(d[0]))
+            assrt(isinstance(d[1], str), "{0!r} is not string".format(d[1]))
+            assrt(isinstance(d[2], int), "{0!r} is not integer".format(d[2]))
+            assrt(d[3] in (TELNET, SSH),
+                  "{0!r} is not TELNET or SSH type".format(d[3]))
             assrt(isinstance(d[4], (str, unicode)),
-                  "%r is not string or unicode" % d[4])
+                  "{0!r} is not string or unicode".format(d[4]))
             assrt(isinstance(d[5], (str, unicode)),
-                  "%r is not string or unicode" % d[5])
+                  "{0!r} is not string or unicode".format(d[5]))
 
     def __is_ipv4(self, address):
         # Thanks tzot @ stackoverflow.com
@@ -119,12 +129,15 @@ class lookingglass(object):
         return True
 
     def __issuecommand(self, host, port, typ, pwd, command, arg):
+        socket.setdefaulttimeout(30)
         if "%ARG%" in command:
-            if self.__is_ipv4(arg) or self.__is_ipv6(arg):
+            if self.__is_ipv4(arg) or self.__is_ipv6(arg):  # Not IPv4 or IPv6
+                command = command.replace("%ARG%", arg)
+            elif len(socket.getaddrinfo(arg, None)) > 0 and not self.resolve:
+                # Resolve by switch/router
                 command = command.replace("%ARG%", arg)
             elif self.resolve:  # Hostname support
                 try:
-                    socket.setdefaulttimeout(5)
                     arg = random.choice(socket.getaddrinfo(arg, None))[4][0]
                     command = command.replace("%ARG%", arg)
                 except:
@@ -133,16 +146,31 @@ class lookingglass(object):
             else:
                 raise AttributeError
         if typ == TELNET:
-            tn = telnetlib.Telnet(host, port)
-            if pwd:
-                tn.read_until("Password: ", 5)  # 5 seconds timeout
-                tn.write(pwd + "\n")
-            tn.write(str(command) + "\n")  # sanitize arguments!?
             try:
-                tn.write("exit\n")
-            except:
-                pass
-            read_data = str(tn.read_all()).splitlines()
+                tn = telnetlib.Telnet(host, port, timeout=30)
+                if pwd:
+                    tn.read_until("Password: ", 30)  # 30 seconds timeout
+                    tn.write(str(pwd) + "\r\n")
+                p = ""
+                timer = 50  # 5 seconds read timeout
+                while timer:
+                    if tn.sock_avail():
+                        p += tn.read_some()
+                        timer += 1
+                    else:
+                        timer -= 1
+                        sleep(0.1)
+                prompt = p.splitlines()[-1]  # Last line with prompt
+                tn.write(str(command) + "\r\n")  # Sanitize arguments!?
+                read_data = tn.read_until(prompt, 10)
+                read_data = read_data.splitlines()
+                for line in read_data[:]:
+                    if prompt in line:
+                        read_data.remove(line)
+                tn.write("exit\r\n")
+                tn.close()
+            except socket.timeout:
+                read_data = ['Connection Timeout, please try again later']
         elif typ == SSH:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -153,15 +181,17 @@ class lookingglass(object):
             read_data = stdout.read().splitlines()
             ssh.close()
         pre_return = []
-        if 'exit' in read_data[-1]:
-            read_data.pop(-1)
+        indexes = [0, len(read_data)]
         for line in read_data:
-            if command not in line:
-                pre_return.append(line)
+            if command in line:
+                indexes[0] = read_data.index(line) + 1
+            elif 'exit' in line:
+                indexes[1] = read_data.index(line)
+        pre_return = read_data[indexes[0]: indexes[1]]
         return str(os.linesep.join(pre_return)).strip()
 
     def template(self, *args):
-        assrt(len(args) == 2, "%r length is not 2" % args)
+        assrt(len(args) == 2, "{0!r} length is not 2".format(args))
         return """
             <!DOCTYPE html>
             <html lang="en">
@@ -211,15 +241,15 @@ class lookingglass(object):
             hosts = "".join(["".join(['<option value="',
                                       str(k),
                                       '">',
-                                      v[3],
+                                      v[4],
                                       '</option>'])
                              for k, v in enumerate(self.hosts)])
             commands = "".join(["".join(['<option value="',
                                          str(k),
                                          '">',
-                                         k,
+                                         str(k),
                                          '</option>'])
-                                for k in self.cmds[self.hosts[0].keys()])  # First taken as all profiles must have same data
+                                for k in self.cmds[self.hosts[0][-1]].keys()])  # First taken as all profiles must have same data
             data = [self.name, """
             <section>
             <header>Looking Glass</header><br>
@@ -241,6 +271,20 @@ class lookingglass(object):
 
 if __name__ == '__main__':
     import argparse
+    commands = {
+        'cisco': {
+            'BGP Summary': 'sh ip bgp summary',
+            'BGP Advertised _ARGUMENT_ to Neighbor': 'sh ip bgp neighbor %ARG% advertised',
+            'Ping': 'ping %ARG%',
+            'Traceroute': 'traceroute %ARG%'
+        },
+        'juniper': {
+            'BGP Summary': 'cli -c "sh bgp sum"',
+            'BGP Advertised _ARGUMENT_ to Neighbor': 'cli -c "show route advertising-protocol bgp %ARG%"',
+            'Ping': 'ping -c 4 %ARG%',
+            'Traceroute': 'traceroute %ARG%'
+        }
+    }
 
     def tuples(s):
         try:
@@ -250,7 +294,7 @@ if __name__ == '__main__':
         except:
             raise argparse.ArgumentTypeError("""Hosts must be 'password' (or for ssh 'login:password'),'ip',port,'name','profile'
     password, ip, name and profile == string or unicode and port, conn == int""")
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-n",
                         "--name",
                         dest='name',
@@ -261,18 +305,19 @@ if __name__ == '__main__':
     parser.add_argument("-c",
                         "--commands",
                         dest='commands',
-                        type=dict,
+                        type=json.loads,
                         default={},
                         nargs='*',
                         action="append",
-                        help="Commands dict of dict for profiles where key is profile name, use %%ARG%% for substition of IP/hostname argument. Key in command is display friendly version",
+                        help="Json array for profiles where key is profile name, use %%ARG%% for substition of IP/hostname argument. Key in command is display friendly version. \r\n Example: \r\n" +
+                        json.dumps(commands,indent = 2).replace('%','%%'),
                         required=False)
     parser.add_argument("-H",
                         "--hosts",
                         dest='hosts',
                         type=tuples,
                         nargs='*',
-                        help="Host list of tuples with password, host address, port number, type of connection (ssh or telnet), name for display and command profile to use",
+                        help="Comma separated profile for router 'password','host_address',port_number,type_of_connection(1 for ssh and 0 for telnet),name,command_profile separated by space",
                         required=False)
     parser.add_argument("-b",
                         "--bind",
@@ -291,27 +336,16 @@ if __name__ == '__main__':
     a = parser.parse_args()
     if a.commands:
         commands = a.commands
-    else:
-        commands = {
-            'cisco': {
-                'BGP Summary': 'sh ip bgp summary',
-                'BGP Advertised _ARGUMENT_ to Neighbor': 'sh ip bgp neighbor %ARG% advertised',
-                'Ping': 'ping %ARG%',
-                'Traceroute': 'traceroute %ARG%'
-            },
-            'juniper': {
-                'BGP Summary': 'echo "sh bgp sum" | cli',
-                'BGP Advertised _ARGUMENT_ to Neighbor': 'echo "show route advertising-protocol bgp %ARG%" | cli',
-                'Ping': 'ping -c 4 %ARG%',
-                'Traceroute': 'traceroute %ARG%'
-            }
-        }
+
     if a.hosts:
         hosts = a.hosts
     else:
         hosts = [("password1", "192.168.0.1", 23, TELNET, "Cisco", 'cisco'),
                  ("password2", "192.168.1.1", 2605, TELNET, "Quagga", 'cisco'),
                  ("login:password3", "192.168.2.1", 22, SSH, "Juniper", 'juniper')]
+
+    if NOSSH:
+        hosts = [i for i in hosts if i[3] != SSH]
     httpd = make_server(a.bind, a.port, lookingglass(
-        name=a.name, cmds=commands, hosts=hosts))
+        name=a.name, cmds=commands, hosts=hosts, resolve=False))
     httpd.serve_forever()
