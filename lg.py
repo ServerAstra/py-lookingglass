@@ -294,7 +294,8 @@ if __name__ == '__main__':
         except:
             raise argparse.ArgumentTypeError("""Hosts must be 'password' (or for ssh 'login:password'),'ip',port,'name','profile'
     password, ip, name and profile == string or unicode and port, conn == int""")
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-n",
                         "--name",
                         dest='name',
@@ -310,14 +311,15 @@ if __name__ == '__main__':
                         nargs='*',
                         action="append",
                         help="Json array for profiles where key is profile name, use %%ARG%% for substition of IP/hostname argument. Key in command is display friendly version. \r\n Example: \r\n" +
-                        json.dumps(commands,indent = 2).replace('%','%%'),
+                        json.dumps(commands, indent=2).replace('%', '%%'),
                         required=False)
     parser.add_argument("-H",
                         "--hosts",
                         dest='hosts',
                         type=tuples,
                         nargs='*',
-                        help="Comma separated profile for router 'password','host_address',port_number,type_of_connection(1 for ssh and 0 for telnet),name,command_profile separated by space",
+                        help="Comma separated profile for router 'password','host_address',port_number,type_of_connection(1 for ssh and 0 for telnet),name,command_profile separated by space. \r\n Example \r\n" +
+                        '"password1","192.168.0.1",23,0,"Cisco","cisco" "login:password2","192.168.1.1",22,0,"Juniper","juniper"',
                         required=False)
     parser.add_argument("-b",
                         "--bind",

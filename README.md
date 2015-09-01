@@ -30,7 +30,7 @@ To run out of the box just clone the repo or install using `pip install py-looki
 ```
 Or you can use it as WSGI callback
 ```python
-lg.lookingglass(name="Looking Glass", cmds=['command','list'], hosts=[('password','ip',port,'name')])
+lg.lookingglass(name="Looking Glass", cmds={'profile':{'command_name','actual command'}}, hosts=[('password','ip',int(port),int(connection_type),'name','profile')])
 ```
 Any additional hacks can be applied before init of class
 
