@@ -5,7 +5,7 @@ from os import path
 
 here = path.abspath(path.dirname(__file__))
 setup(name='py-lookingglass',
-      version='0.9',
+      version='1.0',
       py_modules=['lg'],
       url='https://github.com/andrew-azarov/py-lookingglass',
       author='Andrew Azarov',
@@ -43,6 +43,7 @@ Standard python modules:
 - traceback
 - random
 - argparse
+- json
 
 External:
 

@@ -1,7 +1,7 @@
 py-lookingglass
 ===============
 
-Python looking glass implementation with wsgi
+Python looking glass WSGI implementation
 
 Requires:
 ---------
@@ -16,6 +16,7 @@ Standard python modules:
 * random
 * traceback
 * argparse
+* json
 
 External:
 
