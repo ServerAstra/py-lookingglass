@@ -5,9 +5,10 @@ from os import path
 
 here = path.abspath(path.dirname(__file__))
 setup(name='py-lookingglass',
-      version='1.0',
+      version='1.01',
       py_modules=['lg'],
       url='https://github.com/andrew-azarov/py-lookingglass',
+      download_url='https://github.com/ServerAstra/py-lookingglass/tarball/master',
       author='Andrew Azarov',
       license='MIT',
       author_email='andrew@serverastra.com',
@@ -26,7 +27,7 @@ setup(name='py-lookingglass',
       long_description="""py-lookingglass
 ===============
 
-Python looking glass implementation with wsgi
+Python looking glass wsgi implementation
 
 Requires:
 ---------
@@ -68,7 +69,7 @@ Should also install executable py-lookingglass
 """,
       entry_points={
           'console_scripts': [
-           'py-lookingglass = lg',
+           'py-lookingglass = lg:main()',
           ],
       }
       )

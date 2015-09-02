@@ -269,7 +269,8 @@ class lookingglass(object):
         respond(status, header)
         return [response]
 
-if __name__ == '__main__':
+
+def main():
     import argparse
     commands = {
         'cisco': {
@@ -351,3 +352,7 @@ if __name__ == '__main__':
     httpd = make_server(a.bind, a.port, lookingglass(
         name=a.name, cmds=commands, hosts=hosts, resolve=False))
     httpd.serve_forever()
+
+
+if __name__ == '__main__':
+    main()
