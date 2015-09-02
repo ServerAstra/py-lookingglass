@@ -69,7 +69,7 @@ Should also install executable py-lookingglass
 """,
       entry_points={
           'console_scripts': [
-           'py-lookingglass = lg:main()',
+           'py-lookingglass = lg:main',
           ],
       }
       )
